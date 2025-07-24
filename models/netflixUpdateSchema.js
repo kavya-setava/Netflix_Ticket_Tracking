@@ -1,3 +1,5 @@
+
+
 const mongoose = require('mongoose');
 const { Schema } = mongoose;
 
@@ -14,39 +16,48 @@ const NetflixTicketsSchema = new Schema({
     type: String,
     unique: true
   },
-  ticketKey: String, // Non-unique field
+  ticketKey: String,
   created: Date,
   updated: Date,
-  CM_name: {
-    type: String,
-    
-  },
+  CM_name: String,
   CM_email: {
     type: String,
-   
     match: [/.+\@.+\..+/, 'Please fill a valid email address']
   },
   cm_region: {
     type: String,
-    enum: ['', 'NA', 'EMEA', 'APAC', 'LATAM','UCAN'],
+    enum: ['', 'NA', 'EMEA', 'APAC', 'LATAM', 'UCAN'],
     default: ''
   },
-  // QM_name: {
-  //   type: String,
-  //   default: ''
-  // },
-  // QM_email: {
-  //   type: String,
-  //   default: '',
-  //   match: [/.+\@.+\..+/, 'Please fill a valid email address']
-  // },
   AM_name: {
     type: String,
     default: ''
   },
-  SLA: Date,
-  lastBreachCheck: Date,
+  SLA: {
+    type: String,  // Changed to String (default empty)
+    default: "00:00:00"
+  },
+  // lastBreachCheck: {
+  //   type: String,  // Changed to String (default empty)
+  //   default: ""
+  // },
   latest_created_date: {
+    type: Date,
+    default: Date.now
+  },
+  startTime: {
+    type: String,
+    default: '00:00:00'
+  },
+  endTime: {
+    type: String,
+    default: '00:00:00'
+  },
+  status: {
+    type: String,
+    default: ''
+  }, 
+  updateddate: {
     type: Date,
     default: Date.now
   }
@@ -69,10 +80,9 @@ NetflixTicketsSchema.pre('save', async function(next) {
   }
 });
 
-// Auto-update timestamps
+// Auto-update 'updated' timestamp (no SLA calculation)
 NetflixTicketsSchema.pre('save', function(next) {
   this.updated = new Date();
-  this.SLA = new Date(this.updated.getTime() + 2 * 60 * 60 * 1000);
   if (this.isNew) this.created = this.updated;
   next();
 });
