@@ -6,7 +6,7 @@
 
 // async function processCSV() {
 //   // Connect to MongoDB
-//   await mongoose.connect('mongodb://localhost:27017/NetflixDb', {
+//   await mongoose.connect('mongodb+srv://mcube:123@cluster0.mvb09va.mongodb.net/netflix_db', {
 //     useNewUrlParser: true,
 //     useUnifiedTopology: true
 //   });
@@ -68,7 +68,7 @@
 // async function importQMData() {
 //   try {
 //     // Connect to MongoDB
-//     await mongoose.connect('mongodb://localhost:27017/NetflixDb', {
+//     await mongoose.connect('mongodb+srv://mcube:123@cluster0.mvb09va.mongodb.net/netflix_db', {
 //       useNewUrlParser: true,
 //       useUnifiedTopology: true
 //     });
@@ -76,7 +76,7 @@
 
 //     const results = [];
 //     const downloadsPath = path.join(require('os').homedir(), 'Downloads');
-//     const csvFilePath = path.join(downloadsPath, 'EWS_TimeLines - Sheet3.csv');
+//     const csvFilePath = path.join(downloadsPath, 'Netflix Ticketing System  - cmdata.csv');
 
 //     // Read CSV file with role column
 //     await new Promise((resolve, reject) => {
@@ -88,7 +88,7 @@
 //         .on('data', (data) => {
 //           if (data.name && data.name.trim() !== '') {
 //             // Convert role to number, default to 0 if not provided
-//             data.role = data.role ? parseInt(data.role) : 1;
+//             data.role = data.role ? parseInt(data.role) : 0;
 //             results.push(data);
 //           }
 //         })
@@ -123,72 +123,72 @@
 
 
 
-const mongoose = require('mongoose');
-const { GoogleSpreadsheet } = require('google-spreadsheet');
-require('dotenv').config();
+// const mongoose = require('mongoose');
+// const { GoogleSpreadsheet } = require('google-spreadsheet');
+// require('dotenv').config();
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-});
-const NetflixTicket = require('./models/NetflixTicket'); // Assuming your schema file is here
+// // Connect to MongoDB
+// mongoose.connect(process.env.MONGODB_URI, {
+//   useNewUrlParser: true,
+//   useUnifiedTopology: true
+// });
+// const NetflixTicket = require('./models/NetflixTicket'); // Assuming your schema file is here
 
-// Google Sheets setup
-const doc = new GoogleSpreadsheet('1o6yJNxEgyjgmiqCSX1sX1-qWd0l5_qOmaawT-POS5nI');
+// // Google Sheets setup
+// const doc = new GoogleSpreadsheet('1TXpTvB15jO6WV2h4lk_5qmt5clDl4Brr6Y2Fw-jzU4U');
 
-async function importSheetData() {
-  try {
-    // Authenticate with Google Sheets
-    await doc.useServiceAccountAuth({
-      client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-    });
+// async function importSheetData() {
+//   try {
+//     // Authenticate with Google Sheets
+//     await doc.useServiceAccountAuth({
+//       client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+//       private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+//     });
 
-    // Load document and sheet
-    await doc.loadInfo();
-    const sheet = doc.sheetsById[154894758]; // Using the gid from your URL
+//     // Load document and sheet
+//     await doc.loadInfo();
+//     const sheet = doc.sheetsById[0]; // Using the gid from your URL
 
-    // Get all rows
-    const rows = await sheet.getRows();
+//     // Get all rows
+//     const rows = await sheet.getRows();
 
-    // Process each row
-    for (const row of rows) {
-      // Map sheet columns to your schema fields
-      const ticketData = {
-        ticketKey: row['Issue key (ticket key)'],
-        created: new Date(row['Created']),
-        updated: new Date(row['Updated']),
-        AM_name: row['AM_name'],
-        CM_name: row['Assignee(CM name)'],
-        CM_email: row['Assignee_mail(CM mail)'],
-        cm_region: row['Assignee_region'] || '',
-      };
+//     // Process each row
+//     for (const row of rows) {
+//       // Map sheet columns to your schema fields
+//       const ticketData = {
+//         ticketKey: row['Issue key (ticket key)'],
+//         created: new Date(row['Created']),
+//         updated: new Date(row['Updated']),
+//         AM_name: row['AM_name'],
+//         CM_name: row['Assignee(CM name)'],
+//         CM_email: row['Assignee_mail(CM mail)'],
+//         cm_region: row['Assignee_region'] || '',
+//       };
 
-      // Check if ticket already exists (using ticketKey as identifier)
-      const existingTicket = await NetflixTicket.findOne({ ticketKey: ticketData.ticketKey });
+//       // Check if ticket already exists (using ticketKey as identifier)
+//       const existingTicket = await NetflixTicket.findOne({ ticketKey: ticketData.ticketKey });
       
-      if (existingTicket) {
-        // Update existing ticket
-        await NetflixTicket.updateOne({ _id: existingTicket._id }, ticketData);
-        console.log(`Updated ticket ${ticketData.ticketKey}`);
-      } else {
-        // Create new ticket
-        const newTicket = new NetflixTicket(ticketData);
-        await newTicket.save();
-        console.log(`Created new ticket ${ticketData.ticketKey}`);
-      }
-    }
+//       if (existingTicket) {
+//         // Update existing ticket
+//         await NetflixTicket.updateOne({ _id: existingTicket._id }, ticketData);
+//         console.log(`Updated ticket ${ticketData.ticketKey}`);
+//       } else {
+//         // Create new ticket
+//         const newTicket = new NetflixTicket(ticketData);
+//         await newTicket.save();
+//         console.log(`Created new ticket ${ticketData.ticketKey}`);
+//       }
+//     }
 
-    console.log('Import completed successfully!');
-  } catch (error) {
-    console.error('Error during import:', error);
-  } finally {
-    mongoose.disconnect();
-  }
-}
+//     console.log('Import completed successfully!');
+//   } catch (error) {
+//     console.error('Error during import:', error);
+//   } finally {
+//     mongoose.disconnect();
+//   }
+// }
 
-importSheetData();
+// importSheetData();
 
 
 

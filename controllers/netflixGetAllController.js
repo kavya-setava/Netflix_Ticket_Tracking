@@ -1,31 +1,26 @@
 
-const NetflixTicket = require('../models/netflixUpdateSchema.js')
-
+const NetflixTicket = require('../models/Netflixupdateschema');
 
 
 
 exports.postticketsdata = async (req, res) => {
   try {
-    // Validate required fields
-    // if (!req.body.CM_email || !req.body.CM_name) {
-    //   return res.status(400).json({ 
-    //     success: false,
-    //     error: 'CM_email and CM_name are required fields' 
-    //   });
-    // }
-
-    // Create ticket data object
+    // Create ticket data object with all fields from the schema
     const ticketData = {
-      ticketKey: req.body.ticketKey,
-      created: req.body.created || new Date(),
-      updated: req.body.updated || new Date(),
+      ticketKey: req.body.ticketKey || undefined, // Optional field
       CM_name: req.body.CM_name,
       CM_email: req.body.CM_email,
       cm_region: req.body.cm_region || '',
-      AM_name: req.body.AM_name || ''
+      AM_name: req.body.AM_name || '',
+      // New fields with defaults from schema
+      startTime: req.body.startTime || '00:00:00',
+      endTime: req.body.endTime || '00:00:00',
+      status: req.body.status || '',
+      SLA: req.body.SLA || "", // Empty string default
+      // Timestamps will be auto-handled by schema pre-save hooks
     };
 
-    // Save the ticket
+    // Save the ticket (schema hooks will handle ticketID and timestamps)
     const savedTicket = await NetflixTicket.create(ticketData);
 
     // Return success response
@@ -38,19 +33,25 @@ exports.postticketsdata = async (req, res) => {
   } catch (error) {
     console.error('Error creating ticket:', error);
     
-    // Handle duplicate key error
+    // Handle duplicate key error (for ticketID or ticketKey if unique)
     if (error.code === 11000) {
       return res.status(409).json({ 
         success: false,
-        error: 'Duplicate ticket key detected' 
+        error: error.keyValue?.ticketID ? 'Duplicate ticket ID' : 'Duplicate ticket key',
+        field: Object.keys(error.keyValue)[0]
       });
     }
     
-    // Handle validation errors
+    // Handle validation errors (e.g., email format)
     if (error.name === 'ValidationError') {
+      const errors = {};
+      Object.keys(error.errors).forEach(key => {
+        errors[key] = error.errors[key].message;
+      });
       return res.status(400).json({ 
         success: false,
-        error: error.message 
+        error: 'Validation failed',
+        details: errors 
       });
     }
 
@@ -58,19 +59,21 @@ exports.postticketsdata = async (req, res) => {
     res.status(500).json({ 
       success: false,
       error: 'Internal server error',
-      details: error.message 
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
 
 
+
 exports.getNetflixTickets = async (req, res) => {
   try {
-    const { email, role, cm_region } = req.query; // Added cm_region here
+    const { email, role, cm_region } = req.query;
     
     const { 
       status,
-      priority,
+      startTime,
+      endTime,
       createdFrom, 
       createdTo, 
       updatedFrom, 
@@ -81,20 +84,20 @@ exports.getNetflixTickets = async (req, res) => {
     } = req.query;
     
     if (!email) {
-      return res.status(400).json({ message: 'Email required' });
+      return res.status(400).json({ success: false, error: 'Email is required' });
     }
 
     // Validate role
     if (role !== '0' && role !== '1') {
-      return res.status(400).json({ message: 'Invalid role specified' });
+      return res.status(400).json({ success: false, error: 'Invalid role specified' });
     }
 
-    // Check user authorization and get user type
+    // Check user authorization
     let isCM = false;
-    if (role === '0') {
+    if (role === '1') {
       const cmTicket = await NetflixTicket.findOne({ CM_email: email }).select('_id');
       if (!cmTicket) {
-        return res.status(404).json({ message: 'No updates are available' });
+        return res.status(404).json({ success: false, error: 'No tickets found for this user' });
       }
       isCM = true;
     }
@@ -103,7 +106,7 @@ exports.getNetflixTickets = async (req, res) => {
     let query = {};
     
     // If role is CM (0), only show their own tickets
-    if (role === '0') {
+    if (role === '1') {
       query.CM_email = email;
     }
 
@@ -117,23 +120,27 @@ exports.getNetflixTickets = async (req, res) => {
       query.status = status;
     }
 
-    // Add priority filter if provided
-    if (priority) {
-      query.priority = priority;
+    // Add time filters if provided
+    if (startTime) {
+      query.startTime = startTime;
+    }
+    if (endTime) {
+      query.endTime = endTime;
     }
 
-    // Add date range filters
-    const dateFilters = {};
+    // Add date range filters for created
+    const createdDateFilters = {};
     if (createdFrom) {
-      dateFilters.$gte = new Date(createdFrom);
+      createdDateFilters.$gte = new Date(createdFrom);
     }
     if (createdTo) {
-      dateFilters.$lte = new Date(createdTo);
+      createdDateFilters.$lte = new Date(createdTo);
     }
-    if (Object.keys(dateFilters).length > 0) {
-      query.created = dateFilters;
+    if (Object.keys(createdDateFilters).length > 0) {
+      query.created = createdDateFilters;
     }
 
+    // Add date range filters for updated
     const updatedDateFilters = {};
     if (updatedFrom) {
       updatedDateFilters.$gte = new Date(updatedFrom);
@@ -142,17 +149,19 @@ exports.getNetflixTickets = async (req, res) => {
       updatedDateFilters.$lte = new Date(updatedTo);
     }
     if (Object.keys(updatedDateFilters).length > 0) {
-      query.updatedAt = updatedDateFilters;
+      query.updated = updatedDateFilters;
     }
 
-    // Add text search if provided (only search across existing fields)
+    // Add text search if provided
     if (searchText) {
       query.$or = [
         { ticketID: { $regex: searchText, $options: 'i' } },
+        { ticketKey: { $regex: searchText, $options: 'i' } },
         { CM_name: { $regex: searchText, $options: 'i' } },
         { CM_email: { $regex: searchText, $options: 'i' } },
+        { AM_name: { $regex: searchText, $options: 'i' } },
         { cm_region: { $regex: searchText, $options: 'i' } },
-        { AM_name: { $regex: searchText, $options: 'i' } }
+        { status: { $regex: searchText, $options: 'i' } }
       ];
     }
 
@@ -161,29 +170,106 @@ exports.getNetflixTickets = async (req, res) => {
 
     // If no results found for CM, return message
     if (role === '0' && total === 0) {
-      return res.status(404).json({ message: 'No updates are available' });
+      return res.status(404).json({ success: false, error: 'No tickets found for this user' });
     }
 
     // Fetch paginated results
-    const issues = await NetflixTicket.find(query)
-      .sort({ updatedAt: -1 })
+    const tickets = await NetflixTicket.find(query)
+      .sort({ updated: -1 })  // Changed from updatedAt to updated
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
       .lean();
 
-    res.json({
+    res.status(200).json({
       success: true,
-      count: issues.length,
+      count: tickets.length,
       total,
       totalPages: Math.ceil(total / limit),
       currentPage: parseInt(page),
-      data: issues,
+      data: tickets,
       userType: isCM ? 'CM' : 'QM'
     });
 
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error fetching tickets:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error',
+      // details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+
+
+exports.updateTicketByKey = async (req, res) => {
+  try {
+    const { ticketKey } = req.params;
+    const { status, startTime, endTime, SLA } = req.body;
+    console.log("ticketKey", ticketKey);
+
+    // First find the existing ticket
+    const existingTicket = await NetflixTicket.findOne({ ticketKey: ticketKey });
+    
+    if (!existingTicket) {
+      return res.status(404).json({
+        success: false,
+        error: 'Ticket not found with the provided ticketKey'
+      });
+    }
+
+    // Validate that at least one updatable field is provided
+    if (status === undefined && startTime === undefined && endTime === undefined && SLA === undefined) {
+      return res.status(400).json({
+        success: false,
+        error: 'At least one field to update (status, startTime, endTime, or SLA) is required'
+      });
+    }
+
+    // Build the update object, preserving existing values if not provided
+    const updateData = {
+      status: status !== undefined ? status : existingTicket.status,
+      startTime: startTime !== undefined ? startTime : existingTicket.startTime,
+      endTime: endTime !== undefined ? endTime : existingTicket.endTime,
+      SLA: SLA !== undefined ? SLA : existingTicket.SLA,
+      updateddate: new Date()
+    };
+
+    // Find and update the ticket
+    const updatedTicket = await NetflixTicket.findOneAndUpdate(
+      { ticketKey: ticketKey },
+      { $set: updateData },
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Ticket updated successfully',
+      data: updatedTicket
+    });
+
+  } catch (error) {
+    console.error('Error updating ticket:', error);
+    
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const errors = {};
+      Object.keys(error.errors).forEach(key => {
+        errors[key] = error.errors[key].message;
+      });
+      return res.status(400).json({ 
+        success: false,
+        error: 'Validation failed',
+        details: errors 
+      });
+    }
+
+    // Generic server error
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error',
+      // details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
