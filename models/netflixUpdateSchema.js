@@ -12,7 +12,7 @@ const Counter = mongoose.model('Counter', CounterSchema);
 const NetflixTicketsSchema = new Schema({
   ticketID: {
     type: String,
-    unique: true
+    
   },
   ticketKey: String,
   created: Date,

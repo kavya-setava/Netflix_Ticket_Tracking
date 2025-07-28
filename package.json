@@ -22,7 +22,9 @@
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
     "google-spreadsheet": "^4.1.5",
-    "mongoose": "^8.16.4"
+    "googleapis": "^154.0.0",
+    "mongoose": "^8.16.4",
+    "node-cron": "^4.2.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

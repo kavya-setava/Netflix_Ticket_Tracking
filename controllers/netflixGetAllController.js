@@ -1,5 +1,7 @@
 
 const NetflixTicket = require('../models/Netflixupdateschema');
+const { google } = require('googleapis');
+const path = require('path');
 
 
 
@@ -202,11 +204,130 @@ exports.getNetflixTickets = async (req, res) => {
 
 
 
+
+// // Configure Google Sheets API
+// const sheets = google.sheets({
+//   version: 'v4',
+//   auth: 'AIzaSyAd7mk5rSyABQQyr40r3gWMs0ZMuMWE_Hw' // Your API key
+// });
+
+// exports.updateTicketByKey = async (req, res) => {
+//   try {
+//     const { ticketKey } = req.params;
+//     const { status, startTime, endTime, SLA } = req.body;
+//     console.log("Updating ticket:", ticketKey);
+
+//     // First find the existing ticket
+//     const existingTicket = await NetflixTicket.findOne({ ticketKey: ticketKey });
+    
+//     if (!existingTicket) {
+//       return res.status(404).json({
+//         success: false,
+//         error: 'Ticket not found with the provided ticketKey'
+//       });
+//     }
+
+//     // Validate that at least one updatable field is provided
+//     if (status === undefined && startTime === undefined && endTime === undefined && SLA === undefined) {
+//       return res.status(400).json({
+//         success: false,
+//         error: 'At least one field to update (status, startTime, endTime, or SLA) is required'
+//       });
+//     }
+
+//     // Build the update object
+//     const updateData = {
+//       status: status !== undefined ? status : existingTicket.status,
+//       startTime: startTime !== undefined ? startTime : existingTicket.startTime,
+//       endTime: endTime !== undefined ? endTime : existingTicket.endTime,
+//       SLA: SLA !== undefined ? SLA : existingTicket.SLA,
+//       updateddate: new Date()
+//     };
+
+//     // Update MongoDB
+//     const updatedTicket = await NetflixTicket.findOneAndUpdate(
+//       { ticketKey: ticketKey },
+//       { $set: updateData },
+//       { new: true, runValidators: true }
+//     );
+
+//     // If status changed, update Google Sheet
+//     if (status !== undefined && status !== existingTicket.status) {
+//       try {
+//         // First find the row number of the ticket in the sheet
+//         const sheetResponse = await sheets.spreadsheets.values.get({
+//           spreadsheetId: '1a6dhDpgyr_Bdis-CHsCfVjhwiNrwoS4_P1Im99FlLi4',
+//           range: 'Sheet1!A2:H', // Assuming headers are in row 1
+//         });
+
+//         const rows = sheetResponse.data.values;
+//         const rowIndex = rows.findIndex(row => row[0] === ticketKey);
+
+//         if (rowIndex !== -1) {
+//           // Update the status in Google Sheets (column H is index 7)
+//           await sheets.spreadsheets.values.update({
+//             spreadsheetId: '1a6dhDpgyr_Bdis-CHsCfVjhwiNrwoS4_P1Im99FlLi4',
+//             range: `Sheet1!H${rowIndex + 2}`, // +2 because header row + zero-based index
+//             valueInputOption: 'RAW',
+//             resource: {
+//               values: [[status]]
+//             }
+//           });
+//           console.log(`Updated status in Google Sheet for ticket ${ticketKey}`);
+//         } else {
+//           console.log(`Ticket ${ticketKey} not found in Google Sheet`);
+//         }
+//       } catch (sheetError) {
+//         console.error('Error updating Google Sheet:', sheetError.message);
+//         // Continue with the response even if sheet update fails
+//       }
+//     }
+
+//     res.status(200).json({
+//       success: true,
+//       message: 'Ticket updated successfully',
+//       data: updatedTicket,
+//       sheetUpdated: status !== undefined && status !== existingTicket.status
+//     });
+
+//   } catch (error) {
+//     console.error('Error updating ticket:', error);
+    
+//     if (error.name === 'ValidationError') {
+//       const errors = {};
+//       Object.keys(error.errors).forEach(key => {
+//         errors[key] = error.errors[key].message;
+//       });
+//       return res.status(400).json({ 
+//         success: false,
+//         error: 'Validation failed',
+//         details: errors 
+//       });
+//     }
+
+//     res.status(500).json({ 
+//       success: false,
+//       error: 'Internal server error'
+//     });
+//   }
+// };
+
+
+
+// Load service account credentials
+const auth = new google.auth.GoogleAuth({
+  keyFile: process.env.GOOGLE_CREDENTIALS_PATH,
+  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+});
+
+console.log('auth',auth);
+
+
 exports.updateTicketByKey = async (req, res) => {
   try {
     const { ticketKey } = req.params;
     const { status, startTime, endTime, SLA } = req.body;
-    console.log("ticketKey", ticketKey);
+    console.log("Updating ticket:", ticketKey);
 
     // First find the existing ticket
     const existingTicket = await NetflixTicket.findOne({ ticketKey: ticketKey });
@@ -226,7 +347,7 @@ exports.updateTicketByKey = async (req, res) => {
       });
     }
 
-    // Build the update object, preserving existing values if not provided
+    // Build the update object
     const updateData = {
       status: status !== undefined ? status : existingTicket.status,
       startTime: startTime !== undefined ? startTime : existingTicket.startTime,
@@ -235,23 +356,57 @@ exports.updateTicketByKey = async (req, res) => {
       updateddate: new Date()
     };
 
-    // Find and update the ticket
+    // Update MongoDB
     const updatedTicket = await NetflixTicket.findOneAndUpdate(
       { ticketKey: ticketKey },
       { $set: updateData },
       { new: true, runValidators: true }
     );
 
+    // If status changed, update Google Sheet
+    if (status !== undefined && status !== existingTicket.status) {
+      try {
+        const sheets = google.sheets({ version: 'v4', auth });
+        
+        // First find the row number of the ticket in the sheet
+        const sheetResponse = await sheets.spreadsheets.values.get({
+          spreadsheetId: '1a6dhDpgyr_Bdis-CHsCfVjhwiNrwoS4_P1Im99FlLi4',
+          range: 'Sheet1!A2:H', // Data starts from row 2
+        });
+
+        const rows = sheetResponse.data.values;
+        const rowIndex = rows.findIndex(row => row[0] === ticketKey);
+
+        if (rowIndex !== -1) {
+          // Update the status in Google Sheets (column H is index 7)
+          await sheets.spreadsheets.values.update({
+            spreadsheetId: '1a6dhDpgyr_Bdis-CHsCfVjhwiNrwoS4_P1Im99FlLi4',
+            range: `Sheet1!H${rowIndex + 2}`, // +2 because header row + zero-based index
+            valueInputOption: 'RAW',
+            resource: {
+              values: [[status]]
+            }
+          });
+          console.log(`✅ Updated status in Google Sheet for ticket ${ticketKey}`);
+        } else {
+          console.log(`⚠️ Ticket ${ticketKey} not found in Google Sheet`);
+        }
+      } catch (sheetError) {
+        console.error('❌ Error updating Google Sheet:', sheetError.message);
+        // Continue with the response even if sheet update fails
+      }
+    }
+
     res.status(200).json({
       success: true,
       message: 'Ticket updated successfully',
-      data: updatedTicket
+      data: updatedTicket,
+      sheetUpdated: status !== undefined && status !== existingTicket.status
     });
 
   } catch (error) {
-    console.error('Error updating ticket:', error);
+    console.error('⛔ Error updating ticket:', error);
     
-    // Handle validation errors
     if (error.name === 'ValidationError') {
       const errors = {};
       Object.keys(error.errors).forEach(key => {
@@ -264,14 +419,85 @@ exports.updateTicketByKey = async (req, res) => {
       });
     }
 
-    // Generic server error
     res.status(500).json({ 
       success: false,
-      error: 'Internal server error',
-      // details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: 'Internal server error'
     });
   }
 };
+
+
+
+// exports.updateTicketByKey = async (req, res) => {
+//   try {
+//     const { ticketKey } = req.params;
+//     const { status, startTime, endTime, SLA } = req.body;
+//     console.log("ticketKey", ticketKey);
+
+//     // First find the existing ticket
+//     const existingTicket = await NetflixTicket.findOne({ ticketKey: ticketKey });
+    
+//     if (!existingTicket) {
+//       return res.status(404).json({
+//         success: false,
+//         error: 'Ticket not found with the provided ticketKey'
+//       });
+//     }
+
+//     // Validate that at least one updatable field is provided
+//     if (status === undefined && startTime === undefined && endTime === undefined && SLA === undefined) {
+//       return res.status(400).json({
+//         success: false,
+//         error: 'At least one field to update (status, startTime, endTime, or SLA) is required'
+//       });
+//     }
+
+//     // Build the update object, preserving existing values if not provided
+//     const updateData = {
+//       status: status !== undefined ? status : existingTicket.status,
+//       startTime: startTime !== undefined ? startTime : existingTicket.startTime,
+//       endTime: endTime !== undefined ? endTime : existingTicket.endTime,
+//       SLA: SLA !== undefined ? SLA : existingTicket.SLA,
+//       updateddate: new Date()
+//     };
+
+//     // Find and update the ticket
+//     const updatedTicket = await NetflixTicket.findOneAndUpdate(
+//       { ticketKey: ticketKey },
+//       { $set: updateData },
+//       { new: true, runValidators: true }
+//     );
+
+//     res.status(200).json({
+//       success: true,
+//       message: 'Ticket updated successfully',
+//       data: updatedTicket
+//     });
+
+//   } catch (error) {
+//     console.error('Error updating ticket:', error);
+    
+//     // Handle validation errors
+//     if (error.name === 'ValidationError') {
+//       const errors = {};
+//       Object.keys(error.errors).forEach(key => {
+//         errors[key] = error.errors[key].message;
+//       });
+//       return res.status(400).json({ 
+//         success: false,
+//         error: 'Validation failed',
+//         details: errors 
+//       });
+//     }
+
+//     // Generic server error
+//     res.status(500).json({ 
+//       success: false,
+//       error: 'Internal server error',
+//       // details: process.env.NODE_ENV === 'development' ? error.message : undefined
+//     });
+//   }
+// };
 
 exports.qmdata = async (req, res) => {
   try {
