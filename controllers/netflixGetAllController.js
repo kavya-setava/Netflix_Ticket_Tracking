@@ -177,7 +177,7 @@ exports.getNetflixTickets = async (req, res) => {
 
     // Fetch paginated results
     const tickets = await NetflixTicket.find(query)
-      .sort({ updated: -1 })  // Changed from updatedAt to updated
+      .sort({ updated: 1 })  // Changed from updatedAt to updated
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
       .lean();
